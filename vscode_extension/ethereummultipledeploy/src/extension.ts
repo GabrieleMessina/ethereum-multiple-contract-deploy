@@ -1,127 +1,114 @@
-// // The module 'vscode' contains the VS Code extensibility API
-// // Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
+const solc = require("solc") as any;
+import * as fs from "fs";
+import * as path from "path";
+const Web3 = require("web3") as any;
 
-// // This method is called when your extension is activated
-// // Your extension is activated the very first time the command is executed
-// export function activate(context: vscode.ExtensionContext) {
-
-// 	// Use the console to output diagnostic information (console.log) and errors (console.error)
-// 	// This line of code will only be executed once when your extension is activated
-// 	console.log('Congratulations, your extension "ethereummultipledeploy" is now active!');
-
-// 	// The command has been defined in the package.json file
-// 	// Now provide the implementation of the command with registerCommand
-// 	// The commandId parameter must match the command field in package.json
-// 	const disposable = vscode.commands.registerCommand('ethereummultipledeploy.helloWorld', () => {
-// 		// The code you place here will be executed every time your command is executed
-// 		// Display a message box to the user
-// 		vscode.window.showInformationMessage('Hello World from EthereumMultipleDeploy!');
-// 	});
-
-// 	context.subscriptions.push(disposable);
-// }
-
-// // This method is called when your extension is deactivated
-// export function deactivate() {}
-
-// Import necessary modules
-// const vscode = require("vscode");
-const solc = require("solc");
-const fs = require("fs");
-const path = require("path");
-const Web3 = require("web3");
-const WebSocket = require("ws");
-
-// Web3 setup (change provider URL as needed)
-// const web3 = new Web3("https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID");
-// const deployerAccount = web3.eth.accounts.wallet.add("YOUR_PRIVATE_KEY");
-
-const REMIX_WS_URL = "ws://127.0.0.1:65520"; // Default RemixD WebSocket port
-
-/** Connect to Remix IDE via WebSocket */
-function connectToRemix() {
-    return new Promise((resolve, reject) => {
-        const ws = new WebSocket(REMIX_WS_URL);
-        ws.on("open", () => resolve(ws));
-        ws.on("error", reject);
-    });
-}
-
-/** Compile Solidity Files */
-async function compileSolidityFiles() {
+/**
+ * Compile Solidity files in workspace
+ */
+async function compileSolidityFiles(): Promise<void> {
     const files = await vscode.workspace.findFiles("**/*.sol", "**/node_modules/**");
+    
+    if (files.length === 0) {
+        vscode.window.showWarningMessage("No Solidity files found in the workspace.");
+        return;
+    }
 
-    files.forEach(async (fileUri) => {
+    const sources: { [key: string]: { content: string } } = {};
+    const fileNameToFilePath: { [key: string]: string } = {};
+    for (const fileUri of files) {
         const filePath = fileUri.fsPath;
         const source = fs.readFileSync(filePath, "utf8");
-
-        const input = {
-            language: "Solidity",
-            sources: { [path.basename(filePath)]: { content: source } },
-            settings: { outputSelection: { "*": { "*": ["abi", "evm.bytecode"] } } }
-        };
-
-        const output = JSON.parse(solc.compile(JSON.stringify(input)));
-
-        for (let contractName in output.contracts[path.basename(filePath)]) {
-            const contract = output.contracts[path.basename(filePath)][contractName];
-
-            // Save compiled contract
-            const remixContractsDir = path.join(vscode.workspace.rootPath, "contracts"); // Remix-accessible folder
-            if (!fs.existsSync(remixContractsDir)) fs.mkdirSync(remixContractsDir);
-
-            fs.writeFileSync(path.join(remixContractsDir, `${contractName}.abi`), JSON.stringify(contract.abi, null, 2));
-            fs.writeFileSync(path.join(remixContractsDir, `${contractName}.bin`), contract.evm.bytecode.object);
-        }
-    });
-
-    vscode.window.showInformationMessage("Solidity files compiled and copied to Remix.");
-}
-
-/** Deploy Contract via Remix */
-async function deployContractInRemix(contractName: string) {
-    try {
-        const ws = await connectToRemix();
-
-        const message = JSON.stringify({
-            id: 1,
-            action: "execute",
-            key: "remixd",
-            payload: {
-                method: "deployContract",
-                params: {
-                    contract: contractName,
-                    folder: "/contracts"
-                }
-            }
-        });
-
-        ws.send(message);
-
-        vscode.window.showInformationMessage(`Deployment request sent to Remix for ${contractName}`);
-        ws.close();
-    } catch (error) {
-        vscode.window.showErrorMessage("Failed to connect to Remix. Is Remixd running?");
+        sources[path.basename(filePath)] = { content: source };
+        fileNameToFilePath[path.basename(filePath)] = filePath;
     }
+
+    const input = {
+        language: "Solidity",
+        sources: sources,
+        settings: { outputSelection: { "*": { "*": ["abi", "evm.bytecode"] } } }
+    };
+
+    try{
+        const output = JSON.parse(solc.compile(JSON.stringify(input)));
+        
+        if (output.errors) {
+            vscode.window.showErrorMessage("Compilation failed: " + output.errors[0].formattedMessage);
+            return;
+        }
+
+        for (const fileName in output.contracts) {
+            for (const contractName in output.contracts[fileName]) {
+                const contract = output.contracts[fileName][contractName];
+                
+                // Save compiled files
+                const outputDir = path.join(path.dirname(fileNameToFilePath[fileName]), "build");
+                if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
+                
+                await fs.writeFileSync(
+                    path.join(outputDir, `${contractName}.abi`),
+                    JSON.stringify(contract.abi, null, 2)
+                );
+                await fs.writeFileSync(
+                    path.join(outputDir, `${contractName}.bin`),
+                    contract.evm.bytecode.object
+                );
+            }
+        }
+    }
+    catch (error) {
+        vscode.window.showErrorMessage("Compilation failed: " + error);
+    }
+    
+    vscode.window.showInformationMessage("Solidity files compiled successfully.");
 }
+
+// /**
+//  * Deploy compiled Solidity contract
+//  */
+// async function deployContract(contractName: string, contractPath: string): Promise<void> {
+//     const abiPath = path.join(contractPath, `${contractName}.abi`);
+//     const binPath = path.join(contractPath, `${contractName}.bin`);
+
+//     if (!fs.existsSync(abiPath) || !fs.existsSync(binPath)) {
+//         vscode.window.showErrorMessage(`Compiled contract ${contractName} not found.`);
+//         return;
+//     }
+    
+//     const abi = JSON.parse(fs.readFileSync(abiPath, "utf8"));
+//     const bytecode = fs.readFileSync(binPath, "utf8");
+    
+//     const contract = new web3.eth.Contract(abi);
+    
+//     try {
+//         const deployedContract = await contract.deploy({ data: "0x" + bytecode })
+//             .send({ from: deployerAccount.get(0)?.address, gas: "5000000" });
+        
+//         vscode.window.showInformationMessage(`Contract ${contractName} deployed at: ${deployedContract.options.address}`);
+//     } catch (error) {
+//         vscode.window.showErrorMessage("Deployment failed: " + error);
+//     }
+// }
 
 /**
  * Register VS Code commands
  */
-function activate(context: vscode.ExtensionContext) {
+export function activate(context: vscode.ExtensionContext): void {
+    // Web3 setup (change provider URL as needed)
+    // const web3 = new Web3("https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID");
+    // const deployerAccount = web3.eth.accounts.wallet.add("YOUR_PRIVATE_KEY");
     context.subscriptions.push(
-        vscode.commands.registerCommand("solidityCompiler.compile", compileSolidityFiles),
-        vscode.commands.registerCommand("solidityCompiler.deployToRemix", async () => {
-            const contractName = await vscode.window.showInputBox({ prompt: "Enter contract name to deploy in Remix" });
-            if (contractName) {
-                await deployContractInRemix(contractName);
-            }
-        })
+        vscode.commands.registerCommand('ethereummultipledeploy.helloWorld', () => {vscode.window.showInformationMessage('Hello World from EthereumMultipleDeploy!');}),
+        vscode.commands.registerCommand("ethereummultipledeploy.compile", compileSolidityFiles),
+        // vscode.commands.registerCommand("ethereummultipledeploy.deployToRemix", async () => {
+        //     const contractName = await vscode.window.showInputBox({ prompt: "Enter contract name to deploy" });
+        //     if (contractName) {
+        //         const contractPath = path.join(vscode.workspace.rootPath ?? "", "build");
+        //         await deployContract(contractName, contractPath);
+        //     }
+        // })
     );
 }
 
-function deactivate() {}
-
-module.exports = { activate, deactivate };
-
+export function deactivate(): void {}
