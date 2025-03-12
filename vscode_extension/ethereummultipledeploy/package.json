@@ -22,6 +22,10 @@
         "title": "deployToRemix"
       },
       {
+        "command": "ethereummultipledeploy.deployMultipleContracts",
+        "title": "deployMultipleContracts"
+      },
+      {
         "command": "ethereummultipledeploy.helloWorld",
         "title": "helloWorld"
       }

@@ -10,7 +10,7 @@ interface ICalculator3 {
 
 contract CalculatorAgent {
     // Hardcoded address of the deployed Calculator contract
-    ICalculator public calculator = ICalculator(0xd9145CCE52D386f254917e481eB44e9943F39138);
+    ICalculator public calculator;
 
     function getCalculatorAddress() public view returns (address) {
         return address(calculator);
