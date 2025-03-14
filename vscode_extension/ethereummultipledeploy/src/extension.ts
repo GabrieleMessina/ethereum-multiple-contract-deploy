@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 const solc = require("solc") as any;
 import * as fs from "fs";
 import * as path from "path";
+import { DeployView } from "./views/DeployWebView";
 const Web3 = require("web3").Web3 as any;
 
 /**
@@ -69,10 +70,10 @@ async function compileSolidityFiles(): Promise<void> {
 /**
  * Deploy compiled Solidity contract
  */
-async function deployContract(contractName: string = "CalculatorAgent", artifactsPath: string = "build"): Promise<string|undefined> {
-    const web3 = new Web3(Web3.givenProvider || "ws://localhost:8545"); // Connect to local Hardhat or similar
+async function deployContract(contractName: string = "CalculatorAgent", artifactsPath: string = "build", web3ProviderUrl:string = "ws://localhost:8545", accountIndex:number = 0): Promise<string|undefined> {
+    const web3 = new Web3(web3ProviderUrl); // Connect to local Hardhat or similar
     const accounts = await web3.eth.getAccounts();
-    const deployerAccount = accounts[0]; // Use the first account from local node
+    const deployerAccount = accounts[accountIndex]; // Use the first account from local node
 
     const abiPath = path.join(artifactsPath, `${contractName}.abi`);
     const binPath = path.join(artifactsPath, `${contractName}.bin`);
@@ -105,7 +106,7 @@ async function deployContract(contractName: string = "CalculatorAgent", artifact
     }
 }
 
-async function DeployMultipleContracts(): Promise<{[path:string]: string}> {
+async function DeployMultipleContracts(web3ProviderUrl:string = "ws://localhost:8545", accountIndex:number = 0): Promise<{[path:string]: string}> {
     const vscodeWorkspaceFolder = vscode.workspace.workspaceFolders?.at(0)?.uri.fsPath ?? "";
     const artifactsFolder = path.join(vscodeWorkspaceFolder, "build")
 
@@ -210,7 +211,7 @@ async function DeployMultipleContracts(): Promise<{[path:string]: string}> {
         }
 
         await compileSolidityFiles();
-        let newContractAddress = await deployContract(path.basename(pathToSourceFile, ".sol"), artifactsFolder)
+        let newContractAddress = await deployContract(path.basename(pathToSourceFile, ".sol"), artifactsFolder, web3ProviderUrl, accountIndex);
         if (!newContractAddress) {
             throw Error("Failed to deploy contract.")
         }
@@ -248,19 +249,12 @@ async function DeployMultipleContracts(): Promise<{[path:string]: string}> {
  * Register VS Code commands
  */
 export function activate(context: vscode.ExtensionContext): void {
+    const provider = new DeployView(context.extensionUri);
     context.subscriptions.push(
-        vscode.commands.registerCommand('ethereummultipledeploy.helloWorld', () => {vscode.window.showInformationMessage('Hello World from EthereumMultipleDeploy!');}),
-        vscode.commands.registerCommand("ethereummultipledeploy.compile", compileSolidityFiles),
-        vscode.commands.registerCommand("ethereummultipledeploy.deployToRemix", deployContract),
+		vscode.window.registerWebviewViewProvider(DeployView.viewType, provider));
+
+    context.subscriptions.push(
         vscode.commands.registerCommand("ethereummultipledeploy.deployMultipleContracts", DeployMultipleContracts),
-        // vscode.commands.registerCommand("ethereummultipledeploy.deployToRemix", deployToRemixCancun),
-        // vscode.commands.registerCommand("ethereummultipledeploy.deployToRemix", async () => {
-        //     const contractName = await vscode.window.showInputBox({ prompt: "Enter contract name to deploy" });
-        //     if (contractName) {
-        //         const contractPath = path.join(vscode.workspace.rootPath ?? "", "build");
-        //         await deployContract(contractName, contractPath);
-        //     }
-        // })
     );
 }
 

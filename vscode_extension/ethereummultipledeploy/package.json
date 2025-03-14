@@ -14,22 +14,19 @@
   "contributes": {
     "commands": [
       {
-        "command": "ethereummultipledeploy.compile",
-        "title": "compile"
-      },
-      {
-        "command": "ethereummultipledeploy.deployToRemix",
-        "title": "deployToRemix"
-      },
-      {
         "command": "ethereummultipledeploy.deployMultipleContracts",
-        "title": "deployMultipleContracts"
-      },
-      {
-        "command": "ethereummultipledeploy.helloWorld",
-        "title": "helloWorld"
+        "title": "Solidity: Deploy Multiple Contracts"
       }
-    ]
+    ],
+    "views": {
+      "debug": [
+        {
+          "id": "ethereummultipledeploy.deployView",
+          "type": "webview",
+          "name": "Deploy Contracts"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
