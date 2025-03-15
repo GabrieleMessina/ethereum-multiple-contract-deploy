@@ -29,6 +29,7 @@ jobs:
     - name: Install npm dependencies
       run: | 
         npm install -g @vscode/vsce
+        npm i
     - name: Publish extension
       run: vsce publish
       env:
