@@ -13,7 +13,8 @@
         currentState.accountIndex = prevState.accountIndex;
     }
 
-    vscode.postMessage({ type: 'init', web3ProviderUrl: currentState.web3ProviderUrl, accountIndex: currentState.accountIndex });
+    document.querySelector('#web3ProviderUrl').value = currentState.web3ProviderUrl;
+    document.querySelector('#accountIndex').value = currentState.accountIndex;
 
     document.querySelector('#deployButton').addEventListener('click', () => {
         vscode.postMessage({ type: 'deploy', web3ProviderUrl: currentState.web3ProviderUrl, accountIndex: currentState.accountIndex });

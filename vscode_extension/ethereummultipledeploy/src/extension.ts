@@ -46,8 +46,6 @@ async function compileSolidityFiles(): Promise<void> {
     } catch (error) {
         vscode.window.showErrorMessage("Compilation failed: " + error);
     }
-    
-    vscode.window.showInformationMessage("Solidity files compiled successfully.");
 }
 
 function saveCompiledContracts(output: any, fileNameToFilePath: { [key: string]: string }) {
@@ -96,8 +94,6 @@ async function deployContract(contractName: string = "CalculatorAgent", artifact
     try {
         const deployedContract = await contract.deploy({ data: "0x" + bytecode })
             .send({ from: deployerAccount, gas: "5000000" });
-        
-        vscode.window.showInformationMessage(`${contractName}: ${deployedContract.options.address}`);
 
         await testDeployedContract(deployedContract, deployerAccount);
         return deployedContract.options.address;

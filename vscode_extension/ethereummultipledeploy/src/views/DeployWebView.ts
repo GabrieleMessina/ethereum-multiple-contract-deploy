@@ -37,13 +37,6 @@ export class DeployView implements vscode.WebviewViewProvider {
                         vscode.commands.executeCommand('ethereummultipledeploy.deployMultipleContracts', data.web3ProviderUrl, data.accountIndex);
 						break;
 					}
-				case 'init':
-					{
-						this.web3ProviderUrl = data.web3ProviderUrl;
-						this.accountIndex = data.accountIndex;
-						webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
-						break;
-					}
 			}
 		});
 	}
