@@ -2,3 +2,4 @@
 .states
 contracts/artifacts
 vscode_extension/ethereummultipledeploy/contracts/build
+vscode_extension/ethereummultipledeploy/contracts/bin/

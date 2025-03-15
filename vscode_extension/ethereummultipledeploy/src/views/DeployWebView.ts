@@ -5,6 +5,8 @@ export class DeployView implements vscode.WebviewViewProvider {
 	public static readonly viewType = 'ethereummultipledeploy.deployView';
 
 	private _view?: vscode.WebviewView;
+	private web3ProviderUrl: string = 'ws://localhost:8545';
+	private accountIndex: number = 0;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -33,6 +35,13 @@ export class DeployView implements vscode.WebviewViewProvider {
 				case 'deploy':
 					{
                         vscode.commands.executeCommand('ethereummultipledeploy.deployMultipleContracts', data.web3ProviderUrl, data.accountIndex);
+						break;
+					}
+				case 'init':
+					{
+						this.web3ProviderUrl = data.web3ProviderUrl;
+						this.accountIndex = data.accountIndex;
+						webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 						break;
 					}
 			}
@@ -73,9 +82,9 @@ export class DeployView implements vscode.WebviewViewProvider {
 			</head>
 			<body>
 				<label for="web3ProviderUrl">Web3 Provider URL</label>
-				<input type="text" id="web3ProviderUrl" value="ws://localhost:8545" />
+				<input type="text" id="web3ProviderUrl" value="${this.web3ProviderUrl}" />
 				<label for="accountIndex">Account Index</label>
-				<input type="text" id="accountIndex" value="0" />
+				<input type="text" id="accountIndex" value="${this.accountIndex}" />
                 <button id="deployButton">Deploy All Contracts</button>
 
 				<script nonce="${nonce}" src="${scriptUri}"></script>

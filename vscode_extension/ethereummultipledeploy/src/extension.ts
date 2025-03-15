@@ -3,7 +3,10 @@ const solc = require("solc") as any;
 import * as fs from "fs";
 import * as path from "path";
 import { DeployView } from "./views/DeployWebView";
+import { InterfaceDefinition } from "./antlr/InterfaceDefinition";
+import { InterfaceUsage } from "./antlr/InterfaceUsage";
 const Web3 = require("web3").Web3 as any;
+const SolidityParserListener = import("./antlr/SolidityParserListener.mjs");
 
 /**
  * Compile Solidity files in workspace
@@ -31,7 +34,7 @@ async function compileSolidityFiles(): Promise<void> {
         settings: { outputSelection: { "*": { "*": ["abi", "evm.bytecode"] } } }
     };
 
-    try{
+    try {
         const output = JSON.parse(solc.compile(JSON.stringify(input)));
         
         if (output.errors) {
@@ -39,41 +42,43 @@ async function compileSolidityFiles(): Promise<void> {
             return;
         }
 
-        for (const fileName in output.contracts) {
-            for (const contractName in output.contracts[fileName]) {
-                const contract = output.contracts[fileName][contractName];
-                
-                // Save compiled files
-                const outputDir = path.join(path.dirname(fileNameToFilePath[fileName]), "build");
-                if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
-                
-                fs.writeFileSync(
-                    path.join(outputDir, `${contractName}.abi`),
-                    JSON.stringify(contract.abi, null, 2),
-                    { flag: 'w' }
-                );
-                fs.writeFileSync(
-                    path.join(outputDir, `${contractName}.bin`),
-                    contract.evm.bytecode.object,
-                    { flag: 'w' }
-                );
-            }
-        }
-    }
-    catch (error) {
+        saveCompiledContracts(output, fileNameToFilePath);
+    } catch (error) {
         vscode.window.showErrorMessage("Compilation failed: " + error);
     }
     
     vscode.window.showInformationMessage("Solidity files compiled successfully.");
 }
 
+function saveCompiledContracts(output: any, fileNameToFilePath: { [key: string]: string }) {
+    for (const fileName in output.contracts) {
+        for (const contractName in output.contracts[fileName]) {
+            const contract = output.contracts[fileName][contractName];
+            
+            const outputDir = path.join(path.dirname(fileNameToFilePath[fileName]), "build");
+            if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
+            
+            fs.writeFileSync(
+                path.join(outputDir, `${contractName}.abi`),
+                JSON.stringify(contract.abi, null, 2),
+                { flag: 'w' }
+            );
+            fs.writeFileSync(
+                path.join(outputDir, `${contractName}.bin`),
+                contract.evm.bytecode.object,
+                { flag: 'w' }
+            );
+        }
+    }
+}
+
 /**
  * Deploy compiled Solidity contract
  */
-async function deployContract(contractName: string = "CalculatorAgent", artifactsPath: string = "build", web3ProviderUrl:string = "ws://localhost:8545", accountIndex:number = 0): Promise<string|undefined> {
-    const web3 = new Web3(web3ProviderUrl); // Connect to local Hardhat or similar
+async function deployContract(contractName: string = "CalculatorAgent", artifactsPath: string = "build", web3ProviderUrl: string = "ws://localhost:8545", accountIndex: number = 0): Promise<string | undefined> {
+    const web3 = new Web3(Web3.givenProvider || web3ProviderUrl);
     const accounts = await web3.eth.getAccounts();
-    const deployerAccount = accounts[accountIndex]; // Use the first account from local node
+    const deployerAccount = accounts[accountIndex];
 
     const abiPath = path.join(artifactsPath, `${contractName}.abi`);
     const binPath = path.join(artifactsPath, `${contractName}.bin`);
@@ -94,155 +99,154 @@ async function deployContract(contractName: string = "CalculatorAgent", artifact
         
         vscode.window.showInformationMessage(`${contractName}: ${deployedContract.options.address}`);
 
-        try{//test if source code has been correctly modified with dependent contract address
-            let calculatorAddress = await deployedContract.methods.getCalculatorAddress().call({ from: deployerAccount });
-            vscode.window.showInformationMessage(`GetAddress: ${calculatorAddress}`);
-        }
-        finally{
-            return deployedContract.options.address
-        }
+        await testDeployedContract(deployedContract, deployerAccount);
+        return deployedContract.options.address;
     } catch (error) {
         vscode.window.showErrorMessage("Deployment failed: " + error);
     }
 }
 
-async function DeployMultipleContracts(web3ProviderUrl:string = "ws://localhost:8545", accountIndex:number = 0): Promise<{[path:string]: string}> {
-    const vscodeWorkspaceFolder = vscode.workspace.workspaceFolders?.at(0)?.uri.fsPath ?? "";
-    const artifactsFolder = path.join(vscodeWorkspaceFolder, "build")
-
-    const files = await vscode.workspace.findFiles("**/*.sol", "**/node_modules/**");
-
-    if (files.length === 0) {
-        vscode.window.showWarningMessage("No Solidity files found in the workspace.");
-        return {};
+async function testDeployedContract(deployedContract: any, deployerAccount: string) {
+    try {
+        let calculatorAddress = await deployedContract.methods.getCalculatorAddress().call({ from: deployerAccount });
+        vscode.window.showInformationMessage(`GetAddress: ${calculatorAddress}`);
+    } catch {
     }
+}
 
-    const sources: { [key: string]: { content: string } } = {};
-    const fileNameToFilePath: { [key: string]: string } = {};
-    for (const fileUri of files) {
-        const filePath = fileUri.fsPath;
-        const source = fs.readFileSync(filePath, "utf8");
-        sources[path.basename(filePath)] = { content: source };
-        fileNameToFilePath[path.basename(filePath)] = filePath;
-    }
+/**
+ * Deploy compiled Solidity contracts in bulk
+ */
+async function DeployMultipleContracts(web3ProviderUrl: string = "ws://localhost:8545", accountIndex: number = 0): Promise<void> {
+    try {
+        const vscodeWorkspaceFolder = vscode.workspace.workspaceFolders?.at(0)?.uri.fsPath ?? "";
+        const artifactsFolder = path.join(vscodeWorkspaceFolder, "build");
+        const filePaths = (await vscode.workspace.findFiles("**/*.sol", "**/node_modules/**")).map(file => file.fsPath);
 
-    let interfaceUsageRegex = (iterfaceName: string) => new RegExp(String.raw`${iterfaceName} (?<visibility>public|private|internal|constant|immutable|transient)*\s?(?<name>\w+)(.*);`, "gm");
-    let retrieveInterfaceUsageStatementWithAddress = (iterfaceName: string, address: string, visibility?:string, variableName?:string) => {
-        if(!!visibility)return `${iterfaceName} ${visibility} ${variableName} = ${iterfaceName}(${address});`;
-        else return `${iterfaceName} ${variableName} = ${iterfaceName}(${address});`;
-    }
-    let interfaceDeclarationRegex = /interface (?<name>\w+)/gm;
-
-    //Support data structures
-    let InterfaceDefinedByFile: { [path: string]: string[] } = {} //{pathWhereDefined: [interfaceDefined]}
-    let InterfaceUsedByFile: { [path: string]: string[] } = {} //{pathsWhereUsed: [interfaceUsed]}
-    let InterfaceToSourceDefinition: { [name: string]: string } = {} //{interfaceDefined: pathWhereDefined}
-    let InterfaceToUsages: { [name: string]: string[] } = {} //{interfaceUsed: [pathsWhereUsed]}
-
-    let markedContracts:string[] = []
-    let publishedContractNames:{[path:string]: string} = {} //{sourceFilePath: address}
-    let publishedContractSource:{[path:string]: string} = {} //{sourceFilePath: sourceCode}
-
-    // Read source code to create list of declared interfaces.
-    for (let sourceFilePath of Object.values(fileNameToFilePath)) { //for each source file
-        InterfaceUsedByFile[sourceFilePath] = []
-        InterfaceDefinedByFile[sourceFilePath] = []
-
-        let source:string = fs.readFileSync(sourceFilePath, {encoding: 'utf8'});
-        publishedContractSource[sourceFilePath] = source;
-        let matches = source.matchAll(interfaceDeclarationRegex)
-        for (let match of matches) {
-            let interfaceName = match.groups ? match.groups["name"] : undefined;
-            if (!interfaceName) {
-                continue;
-            }
-            if ((interfaceName in InterfaceToSourceDefinition)) {
-                throw new Error("Interface " + interfaceName + " defined multiple times.")
-            }
-            InterfaceToSourceDefinition[interfaceName] = sourceFilePath
-            InterfaceDefinedByFile[sourceFilePath].push(interfaceName)
-        }
-    }
-
-    // Read source code to create dependency graph
-    for (let [interfaceName, path] of Object.entries(InterfaceToSourceDefinition)) { //search for usage of this interface in all source files
-        if (!(interfaceName in InterfaceToUsages)) {
-            InterfaceToUsages[interfaceName] = []
-        }
-        for (let path of Object.values(fileNameToFilePath)) { // for each source file
-            let source = publishedContractSource[path];
-            let matches = source.matchAll(interfaceUsageRegex(interfaceName))
-            for (let match of matches) { // for each interface usage found
-                InterfaceToUsages[interfaceName].push(path)
-                InterfaceUsedByFile[path].push(interfaceName)
-            }
-        }
-    }
-
-    console.log("{pathWhereDefined: [interfaceDefined]}", InterfaceDefinedByFile)
-    console.log("{interfaceDefined: pathWhereDefined}", InterfaceToSourceDefinition)
-    console.log("{pathsWhereUsed: [interfaceUsed]}", InterfaceUsedByFile)
-    console.log("{interfaceUsed: [pathsWhereUsed]}", InterfaceToUsages)
-    console.log("[markedContracts]", markedContracts)
-
-    // Publish contracts in the righ order based on dependency and alter source code with new addresses
-    for (let path of Object.values(fileNameToFilePath)) { // for each source file
-        await publishContractAndDependencies(path)
-    }
-
-    return publishedContractNames;
-
-    //Utility functions
-    async function publishContractAndDependencies(pathToSourceFile: string): Promise<void> {
-        console.log(`deploying with dependencies ${pathToSourceFile}`)
-        if (pathToSourceFile in publishedContractNames){
+        if (filePaths.length === 0) {
+            vscode.window.showWarningMessage("No Solidity files found in the workspace.");
             return;
         }
-        if (markedContracts.includes(pathToSourceFile)) {
-            console.log("[markedContracts]", markedContracts)
-            throw Error("Circular Dependency Detected.")
+
+        const markedContracts = [] as string[];
+        const publishedContracts = {} as { [path: string]: string }; // Map of source file path to contract address
+        const contractPathToSource = readContractSources(filePaths);
+        const interfaceDefinitions = {} as { [path: string]: InterfaceDefinition[] };
+        const interfaceUsages = {} as { [path: string]: InterfaceUsage[] };
+        
+        for (const sourceFilePath of filePaths) {
+            interfaceDefinitions[sourceFilePath] = await extractInterfaceDefinitionInfo(contractPathToSource[sourceFilePath]);
+            interfaceUsages[sourceFilePath] = await collectInterfaceUsageData(contractPathToSource[sourceFilePath]);
         }
-        markedContracts.push(pathToSourceFile)
-        for (let interfaceName of InterfaceUsedByFile[pathToSourceFile]) {
-            let interfaceSource = InterfaceToSourceDefinition[interfaceName]
-            if(interfaceSource != pathToSourceFile){
-                await publishContractAndDependencies(interfaceSource)
-            }
+        
+        for (const sourceFilePath of filePaths) {
+            await publishContractAndDependencies(
+                sourceFilePath,
+                markedContracts,
+                publishedContracts, 
+                interfaceDefinitions, 
+                interfaceUsages, 
+                contractPathToSource,
+                artifactsFolder, 
+                web3ProviderUrl, 
+                accountIndex
+            );
         }
 
-        await compileSolidityFiles();
-        let newContractAddress = await deployContract(path.basename(pathToSourceFile, ".sol"), artifactsFolder, web3ProviderUrl, accountIndex);
-        if (!newContractAddress) {
-            throw Error("Failed to deploy contract.")
+        vscode.window.showInformationMessage("Multiple Deployment succeded: " + JSON.stringify(publishedContracts));
+    } catch (e) {
+        vscode.window.showErrorMessage("Multiple Deployment failed: " + e);
+    }
+}
+
+function readContractSources(filePaths: string[]): { [path: string]: string; }
+{
+    const sources = {} as { [path: string]: string };
+    for (let filePath of filePaths) {
+        sources[filePath] = fs.readFileSync(filePath, "utf8");
+    }
+    return sources;
+}
+
+async function publishContractAndDependencies(
+    pathToSourceFile: string, 
+    markedContracts: string[],
+    publishedContracts: { [path: string]: string },
+    interfaceDefinitions: { [path: string]: InterfaceDefinition[] },
+    interfaceUsages: { [path: string]: InterfaceUsage[] },
+    contractPathToSource: { [path: string]: string },
+    artifactsFolder: string, 
+    web3ProviderUrl: string, 
+    accountIndex: number
+): Promise<void> {
+    if (publishedContracts[pathToSourceFile]) {
+        return;
+    }
+    if (markedContracts.includes(pathToSourceFile)) {
+        console.log("[markedContracts]", markedContracts);
+        throw Error("Circular Dependency Detected.");
+    }
+    markedContracts.push(pathToSourceFile);
+    for (const iface of interfaceUsages[pathToSourceFile]) {
+        const interfaceDefPath = Object.entries(interfaceDefinitions).filter(dict => dict[1].filter(i => i.name === iface.interfaceName))?.map(dict => dict[0])[0];
+        if (interfaceDefPath != pathToSourceFile) {
+            await publishContractAndDependencies(
+                interfaceDefPath, 
+                markedContracts, 
+                publishedContracts,
+                interfaceDefinitions, 
+                interfaceUsages, 
+                contractPathToSource,
+                artifactsFolder, 
+                web3ProviderUrl, 
+                accountIndex
+            );
         }
-        publishedContractNames[pathToSourceFile] = newContractAddress;
-        alterSourceFilesWithDependencyOn(pathToSourceFile);
     }
 
-    async function alterSourceFilesWithDependencyOn(pathToSourceFile: string): Promise<void> {
-        let newAddress = publishedContractNames[pathToSourceFile]
-        let interfaceWithNewAddresses = InterfaceDefinedByFile[pathToSourceFile]
-        for(let interfaceName of interfaceWithNewAddresses){
-            let filesToUpdate = InterfaceToUsages[interfaceName]
-            // Alter source code to insert newly created contract addresses
-            for (let dependentSourceFile of filesToUpdate){
-                if(dependentSourceFile == pathToSourceFile){
-                    continue;
-                }
-                //put this address in source code.
-                let source = publishedContractSource[dependentSourceFile];
-                let matches = source.matchAll(interfaceUsageRegex(interfaceName));
-                for (let match of matches){
-                    if (match.groups) {
-                        let finalDeclaration = retrieveInterfaceUsageStatementWithAddress(interfaceName, newAddress, match.groups["visibility"], match.groups["name"]);
-                        source = source.replace(interfaceUsageRegex(interfaceName), finalDeclaration);
-                    }
-                }
-                publishedContractSource[dependentSourceFile] = source;
-                fs.writeFileSync(dependentSourceFile, source);
+    await compileSolidityFiles();
+    let newContractAddress = await deployContract(path.basename(pathToSourceFile, ".sol"), artifactsFolder, web3ProviderUrl, accountIndex);
+    if (!newContractAddress) {
+        throw Error("Failed to deploy contract.");
+    }
+    publishedContracts[pathToSourceFile] = newContractAddress;
+    await alterSourceFilesWithDependencyOn(pathToSourceFile, newContractAddress, interfaceDefinitions, interfaceUsages, contractPathToSource);
+}
+
+async function alterSourceFilesWithDependencyOn(
+    pathToSourceFile: string, 
+    newContractAddress:string,
+    interfaceDefinitions: { [path: string]: InterfaceDefinition[] },
+    interfaceUsages: { [path: string]: InterfaceUsage[] },
+    contractPathToSource: { [path: string]: string },
+): Promise<void> {
+    let newAddress = newContractAddress;
+    let interfaceWithNewAddresses = interfaceDefinitions[pathToSourceFile];
+    for (let iface of interfaceWithNewAddresses) {
+        let filesToUpdate = Object.entries(interfaceUsages).filter(dict => dict[1].filter(i => i.interfaceName === iface.name)).map(dict => dict[0]);
+        for (let dependentSourceFile of filesToUpdate) {
+            if (dependentSourceFile == pathToSourceFile) {
+                continue;
             }
+            let source = contractPathToSource[dependentSourceFile];
+            let matches = (await SolidityParserListener).SolidityParserListener.GetInterfaceUsageInSource(source);
+            for (let match of matches) {
+                if (match.interfaceName === iface.name) {
+                    source = (await SolidityParserListener).SolidityParserListener.AlterInterfaceUsageWithAddress(source, match, newAddress);
+                }
+            }
+            fs.writeFileSync(dependentSourceFile, source);
+            contractPathToSource[dependentSourceFile] = source;
         }
     }
+}
+
+async function collectInterfaceUsageData(source: string) {
+    return (await SolidityParserListener).SolidityParserListener.GetInterfaceUsageInSource(source);
+}
+
+async function extractInterfaceDefinitionInfo(source: string) {
+    return (await SolidityParserListener).SolidityParserListener.GetInterfaceDefinitionsInSource(source);
 }
 
 /**
@@ -251,10 +255,11 @@ async function DeployMultipleContracts(web3ProviderUrl:string = "ws://localhost:
 export function activate(context: vscode.ExtensionContext): void {
     const provider = new DeployView(context.extensionUri);
     context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider(DeployView.viewType, provider));
+        vscode.window.registerWebviewViewProvider(DeployView.viewType, provider)
+    );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("ethereummultipledeploy.deployMultipleContracts", DeployMultipleContracts),
+        vscode.commands.registerCommand("ethereummultipledeploy.deployMultipleContracts", DeployMultipleContracts)
     );
 }
 

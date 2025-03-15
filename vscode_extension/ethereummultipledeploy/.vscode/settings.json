@@ -1,5 +1,12 @@
 // Place your settings in this file to overwrite default and user settings.
 {
+	"antlr4.generation": {
+		"outputDir": "./generated/new",
+		"mode": "external",
+		"language": "TypeScript",
+		"listeners": true,
+		"visitors": true,
+	},
 	"files.exclude": {
 		"out": false // set this to true to hide the "out" folder with the compiled JS files
 	},

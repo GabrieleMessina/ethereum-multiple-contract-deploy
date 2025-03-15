@@ -5,4 +5,5 @@ Final assignment for the 'Distributed Systems Engineering' course by University 
 
 1. Install the vscode extension
 2. Run a blockchain node instance with HardHat or similar (e.g. `npx hardhat node`)
+   1. You can use the hardhat project in this repo.
 3. Deploy contracts using extension command

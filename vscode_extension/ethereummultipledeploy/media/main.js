@@ -5,13 +5,15 @@
 (function () {
     const vscode = acquireVsCodeApi();
 
-    const currentState = { web3ProviderUrl: '', accountIndex: '' };
+    const currentState = { web3ProviderUrl: 'ws://localhost:8545', accountIndex: 0 };
 
     const prevState = vscode.getState();
     if(prevState){
         currentState.web3ProviderUrl = prevState.web3ProviderUrl;
         currentState.accountIndex = prevState.accountIndex;
     }
+
+    vscode.postMessage({ type: 'init', web3ProviderUrl: currentState.web3ProviderUrl, accountIndex: currentState.accountIndex });
 
     document.querySelector('#deployButton').addEventListener('click', () => {
         vscode.postMessage({ type: 'deploy', web3ProviderUrl: currentState.web3ProviderUrl, accountIndex: currentState.accountIndex });
