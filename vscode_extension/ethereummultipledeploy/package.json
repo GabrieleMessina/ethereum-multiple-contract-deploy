@@ -4,7 +4,7 @@
   "description": "Deploy multiple contract easily",
   "author": "Gabriele Messina",
   "publisher": "GabrieleMessina",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "license": "MIT",
   "engines": {
     "vscode": "^1.98.0"
@@ -14,10 +14,10 @@
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
-  "homepage": "https://github.com/GabrieleMessina/remix-multiple-contract-deploy",
+  "homepage": "https://github.com/GabrieleMessina/ethereum-multiple-contract-deploy",
     "repository": {
         "type": "git",
-        "url": "https://github.com/GabrieleMessina/remix-multiple-contract-deploy"
+        "url": "https://github.com/GabrieleMessina/ethereum-multiple-contract-deploy"
     },
   "contributes": {
     "commands": [

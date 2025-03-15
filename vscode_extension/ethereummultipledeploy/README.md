@@ -2,7 +2,7 @@
 
 This extension allows you to deploy multiple Ethereum smart contracts directly from Visual Studio Code.
 
-[![Publish VSCode Extension](https://github.com/GabrieleMessina/remix-multiple-contract-deploy/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/GabrieleMessina/remix-multiple-contract-deploy/actions/workflows/main.yml)
+[![Publish VSCode Extension](https://github.com/GabrieleMessina/ethereum-multiple-contract-deploy/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/GabrieleMessina/ethereum-multiple-contract-deploy/actions/workflows/main.yml)
 
 ## Features
 - Deploy multiple Ethereum smart contracts with a single command.
