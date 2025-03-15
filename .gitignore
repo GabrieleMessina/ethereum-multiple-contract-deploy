@@ -1,5 +1,5 @@
 .deps
 .states
 contracts/artifacts
-vscode_extension/ethereummultipledeploy/contracts/build
-vscode_extension/ethereummultipledeploy/contracts/bin/
+vscode_extension/ethereummultipledeploy/example_contracts/build
+vscode_extension/ethereummultipledeploy/example_contracts/bin/

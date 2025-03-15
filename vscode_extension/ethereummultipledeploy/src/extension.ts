@@ -104,8 +104,14 @@ async function deployContract(contractName: string = "CalculatorAgent", artifact
 
 async function testDeployedContract(deployedContract: any, deployerAccount: string) {
     try {
-        let calculatorAddress = await deployedContract.methods.getCalculatorAddress().call({ from: deployerAccount });
-        vscode.window.showInformationMessage(`GetAddress: ${calculatorAddress}`);
+        let response = await deployedContract.methods.getFirstAddress().call({ from: deployerAccount });
+        vscode.window.showInformationMessage(`GetFirst: ${response}`);
+    } catch {
+    }
+
+    try {
+        let response = await deployedContract.methods.getSecondAddress().call({ from: deployerAccount });
+        vscode.window.showInformationMessage(`GetSecond: ${response}`);
     } catch {
     }
 }
